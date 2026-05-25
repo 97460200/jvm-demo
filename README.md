@@ -18,6 +18,7 @@
 ### DevOps
 - 🐳 **Docker 支持** - 提供 Dockerfile 和 docker-compose 快速部署
 - 🔄 **GitHub Actions CI** - 自动构建和测试流程
+- 🚀 **Jenkins 企业级流水线** - 完整的 CI/CD 解决方案，包含代码质量检查、镜像构建和 Kubernetes 部署
 
 ## 🛠️ 技术栈
 
@@ -27,6 +28,10 @@
 - **Thymeleaf** - 服务端模板引擎
 - **Chart.js** - 前端图表库
 - **Docker** - 容器化部署
+- **Jenkins** - CI/CD 持续集成
+- **SonarQube** - 代码质量检查
+- **JaCoCo** - 代码覆盖率
+- **Kubernetes** - 容器编排
 
 ## 🚀 快速开始
 
@@ -110,10 +115,19 @@ jvm-demo/
 │   │       ├── application.properties
 │   │       └── templates/
 │   │           └── index.html                    # Web 界面
+│   └── test/
+│       └── java/com/example/jvmdemo/             # 单元测试
+│           ├── JvmDemoApplicationTests.java
+│           └── service/
+│               └── SimulationServiceTest.java
+├── k8s/                                           # Kubernetes 部署配置
+│   └── deployment.yaml
 ├── Dockerfile
 ├── docker-compose.yml
+├── Jenkinsfile                                     # Jenkins 流水线配置
 ├── pom.xml
 ├── README.md
+├── JENKINS_GUIDE.md                               # Jenkins 部署指南
 └── .github/workflows/
     └── ci.yml                                    # GitHub Actions 配置
 ```
@@ -126,13 +140,38 @@ jvm-demo/
 - 建议在测试环境或虚拟机中使用
 - **切勿在生产环境运行此应用！**
 
-## 🔄 CI 流程
+## 🔄 CI/CD 流程
 
+### GitHub Actions CI
 项目配置了 GitHub Actions CI 流程，在每次 push 或 pull request 时自动：
 - 检出代码
 - 设置 JDK 17
 - 使用 Maven 构建
 - 运行测试
+
+### Jenkins 企业级 CI/CD 流水线 (推荐)
+
+除了 GitHub Actions，项目还提供了完整的 Jenkins CI/CD 解决方案，包含以下功能：
+
+**流水线阶段：
+1. **Checkout Code - 从 Git 仓库拉取代码
+2. **Initialize** - 环境初始化和版本验证
+3. **Static Code Analysis** - SonarQube 代码质量扫描
+4. **Build & Test** - Maven 构建、单元测试和 JaCoCo 代码覆盖率
+5. **Docker Build** - 构建 Docker 镜像并打标签
+6. **Docker Push** - 推送镜像到私有仓库
+7. **Deploy to Dev** - 自动部署到开发环境
+8. **Approval for Prod** - 生产环境人工审批（24小时超时）
+9. **Deploy to Prod** - 部署到 Kubernetes 集群
+
+**其他企业级特性：
+- 参数化构建（可选择是否运行 SonarQube、是否部署到生产环境）
+- Slack 通知（成功、失败、不稳定状态通知）
+- 构建历史保留策略
+- 工作区自动清理
+- 超时控制
+
+详细的 Jenkins 部署和配置指南请参考 [JENKINS_GUIDE.md](./JENKINS_GUIDE.md)
 
 ## 💡 学习资源
 
@@ -142,6 +181,10 @@ jvm-demo/
 - 线程 Dump 分析
 - 内存泄漏检测
 - Docker 容器化部署
+- Jenkins CI/CD 流水线搭建
+- Kubernetes 应用部署
+- SonarQube 代码质量检查
+- JaCoCo 代码覆盖率
 
 ## 📄 许可证
 
