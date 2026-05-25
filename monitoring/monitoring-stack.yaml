@@ -1,0 +1,260 @@
+# JVM Demo 监控栈部署配置
+# 包含 Prometheus、Grafana、Alertmanager
+#
+# 使用前请确保安装了 Prometheus Operator 或 Helm Chart
+
+---
+# Prometheus 告警规则 ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jvm-demo-prometheus-rules
+  labels:
+    app: jvm-demo
+data:
+  alerts.yaml: |
+    groups:
+      - name: jvm_demo_alerts
+        interval: 30s
+        rules:
+          - alert: InstanceDown
+            expr: up{job="jvm-demo"} == 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "实例 {{ $labels.instance }} 已停止"
+              description: "应用实例 {{ $labels.instance }} 已停止超过 1 分钟"
+          
+          - alert: HighErrorRate
+            expr: |
+              100 * sum(rate(http_server_requests_seconds_count{status=~"5..", job="jvm-demo"}[1m]))
+              /
+              sum(rate(http_server_requests_seconds_count{job="jvm-demo"}[1m]))
+              > 10
+            for: 1m
+            labels:
+              severity: warning
+            annotations:
+              summary: "高错误率告警"
+              description: "应用 {{ $labels.application }} 错误率超过 10% (当前: {{ $value }}%)"
+          
+          - alert: HighLatency
+            expr: |
+              histogram_quantile(0.99, rate(http_server_requests_seconds_bucket{job="jvm-demo"}[1m]))
+              > 2
+            for: 2m
+            labels:
+              severity: warning
+            annotations:
+              summary: "请求延迟过高"
+              description: "P99 延迟超过 2 秒 (当前: {{ $value }}s)"
+          
+          - alert: HighMemoryUsage
+            expr: |
+              jvm_memory_used_bytes{area="heap", job="jvm-demo"}
+              /
+              jvm_memory_max_bytes{area="heap", job="jvm-demo"}
+              > 0.8
+            for: 2m
+            labels:
+              severity: warning
+            annotations:
+              summary: "堆内存使用率过高"
+              description: "堆内存使用率超过 80% (当前: {{ $value | humanizePercentage }}%)"
+          
+          - alert: CriticalMemoryUsage
+            expr: |
+              jvm_memory_used_bytes{area="heap", job="jvm-demo"}
+              /
+              jvm_memory_max_bytes{area="heap", job="jvm-demo"}
+              > 0.95
+            for: 30s
+            labels:
+              severity: critical
+            annotations:
+              summary: "堆内存使用率危急"
+              description: "堆内存使用率超过 95% (当前: {{ $value | humanizePercentage }}%) - 可能触发 OOM"
+          
+          - alert: HighCpuUsage
+            expr: |
+              100 * (1 - avg by(instance) (rate(jvm_cpu_process_seconds_total[1m])))
+              > 80
+            for: 2m
+            labels:
+              severity: warning
+            annotations:
+              summary: "CPU 使用率过高"
+              description: "进程 CPU 使用率超过 80% (当前: {{ $value }}%)"
+          
+          - alert: HighThreadCount
+            expr: jvm_threads_live_threads{job="jvm-demo"} > 300
+            for: 2m
+            labels:
+              severity: warning
+            annotations:
+              summary: "线程数过高"
+              description: "活跃线程数超过 300 (当前: {{ $value }})"
+          
+          - alert: DeadlockDetected
+            expr: jvm_threads_deadlocked_threads{job="jvm-demo"} > 0
+            for: 30s
+            labels:
+              severity: critical
+            annotations:
+              summary: "检测到死锁"
+              description: "应用实例 {{ $labels.instance }} 检测到死锁线程"
+          
+          - alert: CanaryHighErrorRate
+            expr: |
+              100 * sum(rate(http_server_requests_seconds_count{status=~"5..", job="jvm-demo", role="canary"}[1m]))
+              /
+              sum(rate(http_server_requests_seconds_count{job="jvm-demo", role="canary"}[1m]))
+              > 20
+            for: 1m
+            labels:
+              severity: critical
+              canary: "true"
+            annotations:
+              summary: "灰度版本错误率过高"
+              description: "灰度版本错误率超过 20% - 建议立即回滚 (当前: {{ $value }}%)"
+          
+          - alert: CanaryHighLatency
+            expr: |
+              histogram_quantile(0.99, rate(http_server_requests_seconds_bucket{job="jvm-demo", role="canary"}[1m]))
+              > 3
+            for: 1m
+            labels:
+              severity: warning
+              canary: "true"
+            annotations:
+              summary: "灰度版本延迟过高"
+              description: "灰度版本 P99 延迟超过 3 秒 (当前: {{ $value }}s) - 建议降低灰度流量"
+
+---
+# Grafana 仪表盘 ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jvm-demo-grafana-dashboards
+  labels:
+    app: jvm-demo
+    grafana_dashboard: "1"
+data:
+  jvm-demo-dashboard.json: |
+    {{ .Files.Get "grafana/dashboards/jvm-demo.json" | indent 4 }}
+
+---
+# Alertmanager 配置示例
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jvm-demo-alertmanager-config
+  labels:
+    app: jvm-demo
+data:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: 5m
+    
+    route:
+      receiver: "default"
+      group_by: ["alertname", "job"]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 1h
+      
+      routes:
+        - match:
+            severity: critical
+          receiver: "critical-alerts"
+          continue: true
+          group_wait: 10s
+        
+        - match:
+            canary: "true"
+          receiver: "canary-alerts"
+          continue: true
+          group_wait: 10s
+        
+        - match:
+            severity: warning
+          receiver: "warning-alerts"
+          continue: true
+    
+    receivers:
+      - name: "default"
+        webhook_configs:
+          - url: "http://webhook-receiver:8080/alerts"
+            send_resolved: true
+      
+      - name: "critical-alerts"
+        webhook_configs:
+          - url: "http://webhook-receiver:8080/alerts/critical"
+            send_resolved: true
+        # slack_configs:
+        #   - api_url: "${SLACK_WEBHOOK_URL}"
+        #     channel: "#alerts-critical"
+        #     username: "Alertmanager"
+        #     icon_url: "https://avatars3.githubusercontent.com/u/3380462"
+        #     text: |-
+        #       *CRITICAL*: {{ .CommonAnnotations.summary }}
+        #       Description: {{ .CommonAnnotations.description }}
+        #       Details: {{ range .Alerts }}{{ range .Labels.SortedPairs }} - {{ .Name }}: {{ .Value }}{{ end }}{{ end }}
+      
+      - name: "warning-alerts"
+        webhook_configs:
+          - url: "http://webhook-receiver:8080/alerts/warning"
+            send_resolved: true
+        # slack_configs:
+        #   - api_url: "${SLACK_WEBHOOK_URL}"
+        #     channel: "#alerts-warning"
+        #     username: "Alertmanager"
+        #     icon_url: "https://avatars3.githubusercontent.com/u/3380462"
+        #     text: |-
+        #       *WARNING*: {{ .CommonAnnotations.summary }}
+        #       Description: {{ .CommonAnnotations.description }}
+      
+      - name: "canary-alerts"
+        webhook_configs:
+          - url: "http://canary-controller:8080/alerts"
+            send_resolved: true
+        # slack_configs:
+        #   - api_url: "${SLACK_WEBHOOK_URL}"
+        #     channel: "#canary-deployment"
+        #     username: "Alertmanager"
+        #     icon_url: "https://avatars3.githubusercontent.com/u/3380462"
+        #     text: |-
+        #       *CANARY ALERT*: {{ .CommonAnnotations.summary }}
+        #       Description: {{ .CommonAnnotations.description }}
+        #       {{ if eq .CommonLabels.severity "critical" }}⚠️ *ACTION REQUIRED*: Consider rolling back the canary deployment{{ end }}
+    
+    inhibit_rules:
+      - source_match:
+          severity: critical
+        target_match:
+          severity: warning
+        equal: ["alertname", "job"]
+
+---
+# Prometheus ServiceMonitor
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: jvm-demo
+  labels:
+    app: jvm-demo
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: jvm-demo
+  endpoints:
+    - port: http
+      path: /actuator/prometheus
+      interval: 30s
+      scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames:
+      - dev
+      - prod

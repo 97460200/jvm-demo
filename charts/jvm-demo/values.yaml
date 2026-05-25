@@ -94,3 +94,41 @@ monitoring:
     enabled: true
     interval: 30s
     path: /actuator/prometheus
+
+# Canary Auto Controller
+canaryController:
+  enabled: false
+  image:
+    repository: python
+    tag: 3.11-slim
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  config:
+    prometheusUrl: "http://prometheus:9090"
+    pollInterval: 30
+    errorRateThreshold: 5.0
+    latencyThresholdMs: 500.0
+    memoryUsageThreshold: 80.0
+    autoRollback: true
+    autoRollbackErrors: 3
+    minWeight: 5
+    maxWeight: 100
+    weightStep: 10
+
+# Prometheus AlertManager Config
+prometheus:
+  additionalScrapeConfigs: []
+  additionalAlertRules: []
+
+# Grafana dashboards
+grafana:
+  dashboards:
+    enabled: true
+    jvmDemo:
+      enabled: true
+      file: monitoring/grafana/dashboards/jvm-demo.json

@@ -1,0 +1,124 @@
+groups:
+  - name: jvm_demo_alerts
+    interval: 30s
+    rules:
+      # ============ 健康状态告警 ============
+      - alert: InstanceDown
+        expr: up{job="jvm-demo"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "实例 {{ $labels.instance }} 已停止"
+          description: "应用实例 {{ $labels.instance }} 已停止超过 1 分钟"
+      
+      # ============ 错误率告警 ============
+      - alert: HighErrorRate
+        expr: |
+          100 * sum(rate(http_server_requests_seconds_count{status=~"5..", job="jvm-demo"}[1m]))
+          /
+          sum(rate(http_server_requests_seconds_count{job="jvm-demo"}[1m]))
+          > 10
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "高错误率告警"
+          description: "应用 {{ $labels.application }} 错误率超过 10% (当前: {{ $value }}%)"
+      
+      # ============ 延迟告警 ============
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.99, rate(http_server_requests_seconds_bucket{job="jvm-demo"}[1m]))
+          > 2
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "请求延迟过高"
+          description: "P99 延迟超过 2 秒 (当前: {{ $value }}s)"
+      
+      # ============ JVM 堆内存告警 ============
+      - alert: HighMemoryUsage
+        expr: |
+          jvm_memory_used_bytes{area="heap", job="jvm-demo"}
+          /
+          jvm_memory_max_bytes{area="heap", job="jvm-demo"}
+          > 0.8
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "堆内存使用率过高"
+          description: "堆内存使用率超过 80% (当前: {{ $value | humanizePercentage }})"
+      
+      - alert: CriticalMemoryUsage
+        expr: |
+          jvm_memory_used_bytes{area="heap", job="jvm-demo"}
+          /
+          jvm_memory_max_bytes{area="heap", job="jvm-demo"}
+          > 0.95
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "堆内存使用率危急"
+          description: "堆内存使用率超过 95% (当前: {{ $value | humanizePercentage }}) - 可能触发 OOM"
+      
+      # ============ CPU 告警 ============
+      - alert: HighCpuUsage
+        expr: |
+          100 * (1 - avg by(instance) (rate(jvm_cpu_process_seconds_total[1m])))
+          > 80
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU 使用率过高"
+          description: "进程 CPU 使用率超过 80% (当前: {{ $value }}%)"
+      
+      # ============ 线程告警 ============
+      - alert: HighThreadCount
+        expr: jvm_threads_live_threads{job="jvm-demo"} > 300
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "线程数过高"
+          description: "活跃线程数超过 300 (当前: {{ $value }})"
+      
+      - alert: DeadlockDetected
+        expr: jvm_threads_deadlocked_threads{job="jvm-demo"} > 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "检测到死锁"
+          description: "应用实例 {{ $labels.instance }} 检测到死锁线程"
+      
+      # ============ 灰度发布监控 ============
+      - alert: CanaryHighErrorRate
+        expr: |
+          100 * sum(rate(http_server_requests_seconds_count{status=~"5..", job="jvm-demo", version="canary"}[1m]))
+          /
+          sum(rate(http_server_requests_seconds_count{job="jvm-demo", version="canary"}[1m]))
+          > 20
+        for: 1m
+        labels:
+          severity: critical
+          canary: "true"
+        annotations:
+          summary: "灰度版本错误率过高"
+          description: "灰度版本错误率超过 20% - 建议立即回滚 (当前: {{ $value }}%)"
+      
+      - alert: CanaryHighLatency
+        expr: |
+          histogram_quantile(0.99, rate(http_server_requests_seconds_bucket{job="jvm-demo", version="canary"}[1m]))
+          > 3
+        for: 1m
+        labels:
+          severity: warning
+          canary: "true"
+        annotations:
+          summary: "灰度版本延迟过高"
+          description: "灰度版本 P99 延迟超过 3 秒 (当前: {{ $value }}s) - 建议降低灰度流量"

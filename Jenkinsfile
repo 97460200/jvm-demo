@@ -24,10 +24,11 @@ pipeline {
     parameters {
         booleanParam(name: 'RUN_SONAR', defaultValue: true, description: '是否运行 SonarQube 扫描')
         booleanParam(name: 'DEPLOY_TO_DEV', defaultValue: true, description: '是否部署到开发环境')
-        booleanParam(name: 'DEPLOY_TO_PROD', defaultValue: false, description: '是否部署到生产环境（需要人工确认）')
+        booleanParam(name: 'DEPLOY_TO_PROD', defaultValue: false, description: '是否部署到生产环境 (需要人工确认)')
         booleanParam(name: 'ENABLE_CANARY', defaultValue: false, description: '是否启用灰度发布')
         choice(name: 'CANARY_WEIGHT', choices: ['10', '20', '30', '50', '100'], description: '灰度版本流量权重百分比')
         string(name: 'CANARY_VERSION', defaultValue: '1.1.0', description: '灰度发布版本号')
+        booleanParam(name: 'ENABLE_AUTO_CANARY_CONTROLLER', defaultValue: false, description: '是否启用灰度自动控制器')
     }
     
     stages {
@@ -109,6 +110,19 @@ pipeline {
             }
         }
         
+        stage('Deploy Monitoring Stack (Dev)') {
+            when {
+                expression { params.DEPLOY_TO_DEV }
+            }
+            steps {
+                echo '部署 Prometheus 和 Grafana (如果未部署)...'
+                script {
+                    // 这部分可以根据实际需求配置 Prometheus Operator 或 Stack
+                    echo '监控栈部署示例 - 请根据实际环境配置'
+                }
+            }
+        }
+        
         stage('Deploy to Dev') {
             when {
                 expression { params.DEPLOY_TO_DEV }
@@ -117,14 +131,16 @@ pipeline {
                 echo '部署到开发环境...'
                 script {
                     sh """
-                    helm upgrade --install ${APP_NAME} charts/jvm-demo \
-                        --namespace ${HELM_NAMESPACE_DEV} \
-                        --create-namespace \
-                        --values charts/jvm-demo/values-dev.yaml \
-                        --set image.tag=${env.BUILD_NUMBER} \
-                        --set image.repository=${DOCKER_REGISTRY}/${APP_NAME} \
-                        --wait \
-                        --timeout 5m
+                        helm upgrade --install ${APP_NAME} charts/jvm-demo \\
+                            --namespace ${HELM_NAMESPACE_DEV} \\
+                            --create-namespace \\
+                            --values charts/jvm-demo/values-dev.yaml \\
+                            --set image.tag=${env.BUILD_NUMBER} \\
+                            --set image.repository=${DOCKER_REGISTRY}/${APP_NAME} \\
+                            --set monitoring.enabled=true \\
+                            --set monitoring.serviceMonitor.enabled=true \\
+                            --wait \\
+                            --timeout 5m
                     """
                     echo '开发环境部署成功！'
                 }
@@ -148,33 +164,42 @@ pipeline {
             }
             steps {
                 script {
+                    def canaryEnabled = params.ENABLE_CANARY ? 'true' : 'false'
+                    def canaryControllerEnabled = params.ENABLE_AUTO_CANARY_CONTROLLER ? 'true' : 'false'
+                    
                     if (params.ENABLE_CANARY) {
                         echo "灰度发布：将 ${params.CANARY_WEIGHT}% 流量路由到版本 ${params.CANARY_VERSION}"
                         sh """
-                        helm upgrade --install ${APP_NAME} charts/jvm-demo \
-                            --namespace ${HELM_NAMESPACE_PROD} \
-                            --create-namespace \
-                            --values charts/jvm-demo/values-prod.yaml \
-                            --set image.tag=${env.BUILD_NUMBER} \
-                            --set image.repository=${DOCKER_REGISTRY}/${APP_NAME} \
-                            --set canary.enabled=true \
-                            --set canary.weight=${params.CANARY_WEIGHT} \
-                            --set canary.version=${params.CANARY_VERSION} \
-                            --wait \
-                            --timeout 5m
+                            helm upgrade --install ${APP_NAME} charts/jvm-demo \\
+                                --namespace ${HELM_NAMESPACE_PROD} \\
+                                --create-namespace \\
+                                --values charts/jvm-demo/values-prod.yaml \\
+                                --set image.tag=${env.BUILD_NUMBER} \\
+                                --set image.repository=${DOCKER_REGISTRY}/${APP_NAME} \\
+                                --set canary.enabled=true \\
+                                --set canary.weight=${params.CANARY_WEIGHT} \\
+                                --set canary.version=${params.CANARY_VERSION} \\
+                                --set canaryController.enabled=${canaryControllerEnabled} \\
+                                --set monitoring.enabled=true \\
+                                --set monitoring.serviceMonitor.enabled=true \\
+                                --wait \\
+                                --timeout 5m
                         """
                     } else {
                         echo "全量发布到生产环境"
                         sh """
-                        helm upgrade --install ${APP_NAME} charts/jvm-demo \
-                            --namespace ${HELM_NAMESPACE_PROD} \
-                            --create-namespace \
-                            --values charts/jvm-demo/values-prod.yaml \
-                            --set image.tag=${env.BUILD_NUMBER} \
-                            --set image.repository=${DOCKER_REGISTRY}/${APP_NAME} \
-                            --set canary.enabled=false \
-                            --wait \
-                            --timeout 5m
+                            helm upgrade --install ${APP_NAME} charts/jvm-demo \\
+                                --namespace ${HELM_NAMESPACE_PROD} \\
+                                --create-namespace \\
+                                --values charts/jvm-demo/values-prod.yaml \\
+                                --set image.tag=${env.BUILD_NUMBER} \\
+                                --set image.repository=${DOCKER_REGISTRY}/${APP_NAME} \\
+                                --set canary.enabled=false \\
+                                --set canaryController.enabled=false \\
+                                --set monitoring.enabled=true \\
+                                --set monitoring.serviceMonitor.enabled=true \\
+                                --wait \\
+                                --timeout 5m
                         """
                     }
                     echo '生产环境部署成功！'
@@ -191,12 +216,26 @@ pipeline {
                 script {
                     def namespace = params.DEPLOY_TO_PROD ? HELM_NAMESPACE_PROD : HELM_NAMESPACE_DEV
                     sh """
-                    kubectl rollout status deployment/${APP_NAME} -n ${namespace} --timeout=2m
-                    kubectl get pods -n ${namespace} -l app.kubernetes.io/name=${APP_NAME}
+                        kubectl rollout status deployment/${APP_NAME} -n ${namespace} --timeout=2m
+                        kubectl get pods -n ${namespace} -l app.kubernetes.io/name=${APP_NAME}
                     """
                     if (params.ENABLE_CANARY && params.DEPLOY_TO_PROD) {
                         sh "kubectl get pods -n ${HELM_NAMESPACE_PROD} -l role=canary"
                     }
+                    echo '部署验证完成！'
+                }
+            }
+        }
+        
+        stage('Run Integration Tests (Dev)') {
+            when {
+                expression { params.DEPLOY_TO_DEV }
+            }
+            steps {
+                echo '运行集成测试...'
+                script {
+                    // 这里可以添加实际的集成测试
+                    echo '集成测试示例 - 请根据实际需求配置'
                 }
             }
         }

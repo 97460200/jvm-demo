@@ -1,0 +1,65 @@
+{{- if .Values.canaryController.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "jvm-demo.fullname" . }}-canary-controller
+  labels:
+    {{- include "jvm-demo.labels" . | nindent 4 }}
+data:
+  canary_controller.py: |
+{{ .Files.Get "scripts/canary_controller.py" | indent 4 }}
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "jvm-demo.fullname" . }}-canary-controller
+  labels:
+    {{- include "jvm-demo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: canary-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "jvm-demo.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: canary-controller
+  template:
+    metadata:
+      labels:
+        {{- include "jvm-demo.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: canary-controller
+    spec:
+      serviceAccountName: {{ include "jvm-demo.serviceAccountName" . }}
+      containers:
+        - name: canary-controller
+          image: "{{ .Values.canaryController.image.repository }}:{{ .Values.canaryController.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          command: ["python", "/scripts/canary_controller.py"]
+          env:
+            - name: PROMETHEUS_URL
+              value: {{ .Values.canaryController.config.prometheusUrl | quote }}
+            - name: K8S_NAMESPACE
+              value: {{ .Release.Namespace | quote }}
+            - name: POLL_INTERVAL
+              value: {{ .Values.canaryController.config.pollInterval | quote }}
+            - name: ERROR_RATE_THRESHOLD
+              value: {{ .Values.canaryController.config.errorRateThreshold | quote }}
+            - name: LATENCY_THRESHOLD_MS
+              value: {{ .Values.canaryController.config.latencyThresholdMs | quote }}
+            - name: MEMORY_USAGE_THRESHOLD
+              value: {{ .Values.canaryController.config.memoryUsageThreshold | quote }}
+            - name: AUTO_ROLLBACK
+              value: {{ .Values.canaryController.config.autoRollback | quote }}
+            - name: AUTO_ROLLBACK_ERRORS
+              value: {{ .Values.canaryController.config.autoRollbackErrors | quote }}
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+          resources:
+            {{- toYaml .Values.canaryController.resources | nindent 12 }}
+      volumes:
+        - name: scripts
+          configMap:
+            name: {{ include "jvm-demo.fullname" . }}-canary-controller
+            defaultMode: 0755
+{{- end }}
