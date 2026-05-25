@@ -1,0 +1,9 @@
+version: '3.8'
+
+services:
+  jvm-demo:
+    build: .
+    ports:
+      - "8080:8080"
+    container_name: jvm-demo
+    restart: unless-stopped

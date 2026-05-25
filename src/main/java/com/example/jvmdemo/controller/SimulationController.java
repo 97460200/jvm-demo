@@ -2,6 +2,9 @@ package com.example.jvmdemo.controller;
 
 import com.example.jvmdemo.service.SimulationService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -9,6 +12,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -65,6 +69,27 @@ public class SimulationController {
         return result;
     }
 
+    @PostMapping("/api/deadlock/create")
+    @ResponseBody
+    public Map<String, Object> createDeadlock() {
+        simulationService.createDeadlock();
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        return result;
+    }
+
+    @GetMapping("/api/thread-dump")
+    @ResponseBody
+    public ResponseEntity<byte[]> getThreadDump() {
+        String dump = simulationService.getThreadDump();
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.TEXT_PLAIN);
+        headers.setContentDispositionFormData("attachment", "thread-dump.txt");
+        return ResponseEntity.ok()
+                .headers(headers)
+                .body(dump.getBytes(StandardCharsets.UTF_8));
+    }
+
     @GetMapping("/api/status")
     @ResponseBody
     public Map<String, Object> getStatus() {
@@ -73,5 +98,11 @@ public class SimulationController {
         status.put("usedMemory", simulationService.getUsedMemory() / 1024 / 1024);
         status.put("maxMemory", simulationService.getMaxMemory() / 1024 / 1024);
         return status;
+    }
+
+    @GetMapping("/api/metrics")
+    @ResponseBody
+    public Map<String, Object> getMetrics() {
+        return simulationService.getDetailedMetrics();
     }
 }
