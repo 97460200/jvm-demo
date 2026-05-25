@@ -1,0 +1,35 @@
+# Production Environment Values
+replicaCount: 3
+
+image:
+  repository: registry.example.com/jvm-demo
+  tag: "prod-1.0.0"
+
+ingress:
+  enabled: true
+  hosts:
+    - host: jvm-demo.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+
+javaOpts: "-Xms1G -Xmx2G -XX:+UseG1GC"
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+canary:
+  enabled: false
+  weight: 10
+  version: "prod-1.1.0"

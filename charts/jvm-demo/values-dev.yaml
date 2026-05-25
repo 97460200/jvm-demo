@@ -1,0 +1,27 @@
+# Development Environment Values
+replicaCount: 1
+
+image:
+  repository: registry.example.com/jvm-demo
+  tag: "dev-latest"
+
+ingress:
+  enabled: true
+  hosts:
+    - host: jvm-demo-dev.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+javaOpts: "-Xms256m -Xmx512m"
+
+canary:
+  enabled: false

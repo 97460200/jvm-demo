@@ -1,0 +1,40 @@
+{{- if .Values.canary.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "jvm-demo.fullname" . }}-canary
+  labels:
+    {{- include "jvm-demo.labels" . | nindent 4 }}
+    app.kubernetes.io/version: {{ .Values.canary.version }}
+    role: canary
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "jvm-demo.selectorLabels" . | nindent 6 }}
+      role: canary
+  template:
+    metadata:
+      labels:
+        {{- include "jvm-demo.selectorLabels" . | nindent 8 }}
+        role: canary
+        app.kubernetes.io/version: {{ .Values.canary.version }}
+    spec:
+      containers:
+      - name: {{ .Chart.Name }}
+        image: "{{ .Values.image.repository }}:{{ .Values.canary.version }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        env:
+        - name: JAVA_OPTS
+          value: "{{ .Values.javaOpts }}"
+        livenessProbe:
+          {{- toYaml .Values.livenessProbe | nindent 10 }}
+        readinessProbe:
+          {{- toYaml .Values.readinessProbe | nindent 10 }}
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+{{- end }}

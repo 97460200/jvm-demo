@@ -19,6 +19,8 @@
 - 🐳 **Docker 支持** - 提供 Dockerfile 和 docker-compose 快速部署
 - 🔄 **GitHub Actions CI** - 自动构建和测试流程
 - 🚀 **Jenkins 企业级流水线** - 完整的 CI/CD 解决方案，包含代码质量检查、镜像构建和 Kubernetes 部署
+- ⚓ **Helm Chart 管理** - 企业级 Kubernetes 部署和应用管理
+- 🎨 **灰度发布** - 支持基于 Nginx Ingress 的 Canary 发布策略
 
 ## 🛠️ 技术栈
 
@@ -32,6 +34,8 @@
 - **SonarQube** - 代码质量检查
 - **JaCoCo** - 代码覆盖率
 - **Kubernetes** - 容器编排
+- **Helm** - Kubernetes 包管理
+- **Nginx Ingress** - 入口控制器和灰度发布流量控制
 
 ## 🚀 快速开始
 
@@ -120,14 +124,28 @@ jvm-demo/
 │           ├── JvmDemoApplicationTests.java
 │           └── service/
 │               └── SimulationServiceTest.java
-├── k8s/                                           # Kubernetes 部署配置
-│   └── deployment.yaml
+├── charts/                                        # Helm Charts
+│   └── jvm-demo/
+│       ├── Chart.yaml
+│       ├── values.yaml                           # 默认配置
+│       ├── values-dev.yaml                       # 开发环境配置
+│       ├── values-prod.yaml                      # 生产环境配置
+│       └── templates/
+│           ├── deployment.yaml
+│           ├── service.yaml
+│           ├── ingress.yaml
+│           ├── canary-deployment.yaml            # 灰度发布部署
+│           ├── canary-ingress.yaml               # 灰度发布 Ingress
+│           ├── serviceaccount.yaml
+│           ├── servicemonitor.yaml
+│           └── _helpers.tpl
 ├── Dockerfile
 ├── docker-compose.yml
 ├── Jenkinsfile                                     # Jenkins 流水线配置
 ├── pom.xml
 ├── README.md
 ├── JENKINS_GUIDE.md                               # Jenkins 部署指南
+├── HELM_GUIDE.md                                  # Helm 和灰度发布指南
 └── .github/workflows/
     └── ci.yml                                    # GitHub Actions 配置
 ```
@@ -160,18 +178,34 @@ jvm-demo/
 4. **Build & Test** - Maven 构建、单元测试和 JaCoCo 代码覆盖率
 5. **Docker Build** - 构建 Docker 镜像并打标签
 6. **Docker Push** - 推送镜像到私有仓库
-7. **Deploy to Dev** - 自动部署到开发环境
-8. **Approval for Prod** - 生产环境人工审批（24小时超时）
-9. **Deploy to Prod** - 部署到 Kubernetes 集群
+7. **Lint Helm Chart** - 验证 Helm Chart 语法
+8. **Deploy to Dev** - 自动部署到开发环境（使用 Helm）
+9. **Approval for Prod** - 生产环境人工审批（24小时超时）
+10. **Deploy to Prod with Canary** - 支持灰度发布的生产环境部署
+11. **Verify Deployment** - 验证部署状态
 
 **其他企业级特性：
-- 参数化构建（可选择是否运行 SonarQube、是否部署到生产环境）
+- 参数化构建（可选择是否运行 SonarQube、是否部署到生产环境、是否启用灰度发布）
+- 灰度发布支持（可配置灰度流量权重 10%/20%/30%/50%/100%）
 - Slack 通知（成功、失败、不稳定状态通知）
 - 构建历史保留策略
 - 工作区自动清理
 - 超时控制
 
 详细的 Jenkins 部署和配置指南请参考 [JENKINS_GUIDE.md](./JENKINS_GUIDE.md)
+
+### Helm 和灰度发布
+
+项目提供完整的 Helm Chart 管理，支持：
+- 多环境配置（开发/生产）
+- 可配置的资源限制和请求
+- 健康检查探针配置
+- 自动扩缩容配置
+- ServiceMonitor 用于 Prometheus 监控
+- 基于 Nginx Ingress 的灰度发布（Canary Release）
+- 灵活的灰度流量控制（10% - 100%）
+
+详细的 Helm 使用和灰度发布指南请参考 [HELM_GUIDE.md](./HELM_GUIDE.md)
 
 ## 💡 学习资源
 
@@ -185,6 +219,10 @@ jvm-demo/
 - Kubernetes 应用部署
 - SonarQube 代码质量检查
 - JaCoCo 代码覆盖率
+- Helm Chart 开发和管理
+- 灰度发布策略和实现
+- Nginx Ingress 控制器使用
+- 企业级应用部署最佳实践
 
 ## 📄 许可证
 
