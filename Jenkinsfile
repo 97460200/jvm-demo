@@ -28,7 +28,6 @@ pipeline {
         booleanParam(name: 'ENABLE_CANARY', defaultValue: false, description: '是否启用灰度发布')
         choice(name: 'CANARY_WEIGHT', choices: ['10', '20', '30', '50', '100'], description: '灰度版本流量权重百分比')
         string(name: 'CANARY_VERSION', defaultValue: '1.1.0', description: '灰度发布版本号')
-        booleanParam(name: 'ENABLE_AUTO_CANARY_CONTROLLER', defaultValue: false, description: '是否启用灰度自动控制器')
     }
     
     stages {
@@ -110,19 +109,6 @@ pipeline {
             }
         }
         
-        stage('Deploy Monitoring Stack (Dev)') {
-            when {
-                expression { params.DEPLOY_TO_DEV }
-            }
-            steps {
-                echo '部署 Prometheus 和 Grafana (如果未部署)...'
-                script {
-                    // 这部分可以根据实际需求配置 Prometheus Operator 或 Stack
-                    echo '监控栈部署示例 - 请根据实际环境配置'
-                }
-            }
-        }
-        
         stage('Deploy to Dev') {
             when {
                 expression { params.DEPLOY_TO_DEV }
@@ -137,8 +123,6 @@ pipeline {
                             --values charts/jvm-demo/values-dev.yaml \\
                             --set image.tag=${env.BUILD_NUMBER} \\
                             --set image.repository=${DOCKER_REGISTRY}/${APP_NAME} \\
-                            --set monitoring.enabled=true \\
-                            --set monitoring.serviceMonitor.enabled=true \\
                             --wait \\
                             --timeout 5m
                     """
@@ -165,7 +149,6 @@ pipeline {
             steps {
                 script {
                     def canaryEnabled = params.ENABLE_CANARY ? 'true' : 'false'
-                    def canaryControllerEnabled = params.ENABLE_AUTO_CANARY_CONTROLLER ? 'true' : 'false'
                     
                     if (params.ENABLE_CANARY) {
                         echo "灰度发布：将 ${params.CANARY_WEIGHT}% 流量路由到版本 ${params.CANARY_VERSION}"
@@ -179,9 +162,6 @@ pipeline {
                                 --set canary.enabled=true \\
                                 --set canary.weight=${params.CANARY_WEIGHT} \\
                                 --set canary.version=${params.CANARY_VERSION} \\
-                                --set canaryController.enabled=${canaryControllerEnabled} \\
-                                --set monitoring.enabled=true \\
-                                --set monitoring.serviceMonitor.enabled=true \\
                                 --wait \\
                                 --timeout 5m
                         """
@@ -195,9 +175,6 @@ pipeline {
                                 --set image.tag=${env.BUILD_NUMBER} \\
                                 --set image.repository=${DOCKER_REGISTRY}/${APP_NAME} \\
                                 --set canary.enabled=false \\
-                                --set canaryController.enabled=false \\
-                                --set monitoring.enabled=true \\
-                                --set monitoring.serviceMonitor.enabled=true \\
                                 --wait \\
                                 --timeout 5m
                         """
