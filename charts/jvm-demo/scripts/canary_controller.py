@@ -122,18 +122,19 @@ class HelmController:
             return False
     
     def disable_canary(self) -> bool:
-        """禁用灰度发布 (回滚)"""
+        """禁用灰度发布 (回滚) - 同时删除灰度控制器"""
         try:
             cmd = [
                 'helm', 'upgrade', self.config.release_name, 'charts/jvm-demo',
                 '--namespace', self.config.namespace,
                 '--set', 'canary.enabled=false',
+                '--set', 'canaryController.enabled=false',
                 '--wait', '--timeout', '5m'
             ]
-            logger.warning("Disabling canary (rollback)")
+            logger.warning("Disabling canary and controller (rollback)")
             subprocess.run(cmd, check=True, capture_output=True, text=True)
             self.config.canary_enabled = False
-            logger.info("Successfully disabled canary")
+            logger.info("Successfully disabled canary and controller")
             return True
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to disable canary: {e.stderr}")

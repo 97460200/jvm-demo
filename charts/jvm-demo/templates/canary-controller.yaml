@@ -1,4 +1,4 @@
-{{- if .Values.canaryController.enabled }}
+{{- if and .Values.canary.enabled .Values.canaryController.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
