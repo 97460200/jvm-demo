@@ -81,6 +81,11 @@ readinessProbe:
   timeoutSeconds: 3
   failureThreshold: 3
 
+# Stable Version Configuration
+# 稳定版版本，线上已运行的版本，灰度发布时不会重新部署
+stable:
+  version: v1
+
 # Canary Release Configuration
 canary:
   enabled: false

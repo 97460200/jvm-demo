@@ -4,7 +4,7 @@ metadata:
   name: {{ include "jvm-demo.fullname" . }}
   labels:
     {{- include "jvm-demo.labels" . | nindent 4 }}
-    app.kubernetes.io/version: "{{ .Values.image.tag | default .Chart.AppVersion }}"
+    app.kubernetes.io/version: "{{ .Values.stable.version }}"
 spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
@@ -12,6 +12,7 @@ spec:
   selector:
     matchLabels:
       {{- include "jvm-demo.selectorLabels" . | nindent 6 }}
+      version: stable
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -20,14 +21,13 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "jvm-demo.labels" . | nindent 8 }}
-        app.kubernetes.io/version: "{{ .Values.image.tag | default .Chart.AppVersion }}"
-        version: "stable"
+        {{- include "jvm-demo.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/version: "{{ .Values.stable.version }}"
+        version: stable
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -43,7 +43,7 @@ spec:
         - name: {{ .Chart.Name }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          image: "{{ .Values.image.repository }}:{{ .Values.stable.version }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http

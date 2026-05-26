@@ -27,7 +27,9 @@ pipeline {
         booleanParam(name: 'DEPLOY_TO_PROD', defaultValue: false, description: '是否部署到生产环境 (需要人工确认)')
         booleanParam(name: 'ENABLE_CANARY', defaultValue: false, description: '是否启用灰度发布')
         choice(name: 'CANARY_WEIGHT', choices: ['10', '20', '30', '50', '100'], description: '灰度版本流量权重百分比')
-        string(name: 'CANARY_VERSION', defaultValue: '1.1.0', description: '灰度发布版本号')
+        string(name: 'CANARY_VERSION', defaultValue: '1.1.0', description: '灰度发布版本号 (新版本)')
+        string(name: 'STABLE_VERSION', defaultValue: '1.0.0', description: '稳定版版本号 (当前线上运行版本)')
+        booleanParam(name: 'FIRST_DEPLOY', defaultValue: false, description: '是否是首次部署 (会部署稳定版)')
     }
     
     stages {
@@ -148,36 +150,74 @@ pipeline {
             }
             steps {
                 script {
-                    def canaryEnabled = params.ENABLE_CANARY ? 'true' : 'false'
-                    
                     if (params.ENABLE_CANARY) {
-                        echo "灰度发布：将 ${params.CANARY_WEIGHT}% 流量路由到版本 ${params.CANARY_VERSION}"
-                        sh """
-                            helm upgrade --install ${APP_NAME} charts/jvm-demo \\
-                                --namespace ${HELM_NAMESPACE_PROD} \\
-                                --create-namespace \\
-                                --values charts/jvm-demo/values-prod.yaml \\
-                                --set image.tag=${env.BUILD_NUMBER} \\
-                                --set image.repository=${DOCKER_REGISTRY}/${APP_NAME} \\
-                                --set canary.enabled=true \\
-                                --set canary.weight=${params.CANARY_WEIGHT} \\
-                                --set canary.version=${params.CANARY_VERSION} \\
-                                --wait \\
-                                --timeout 5m
-                        """
+                        echo "=== 灰度发布流程 ==="
+                        echo "稳定版 (线上运行): ${params.STABLE_VERSION}"
+                        echo "灰度版 (新版本): ${params.CANARY_VERSION}"
+                        echo "初始灰度流量: ${params.CANARY_WEIGHT}%"
+                        
+                        if (params.FIRST_DEPLOY) {
+                            echo "首次部署：同时部署稳定版和灰度版"
+                            sh """
+                                helm upgrade --install ${APP_NAME} charts/jvm-demo \\
+                                    --namespace ${HELM_NAMESPACE_PROD} \\
+                                    --create-namespace \\
+                                    --values charts/jvm-demo/values-prod.yaml \\
+                                    --set image.repository=${DOCKER_REGISTRY}/${APP_NAME} \\
+                                    --set stable.version=${params.STABLE_VERSION} \\
+                                    --set canary.enabled=true \\
+                                    --set canary.weight=${params.CANARY_WEIGHT} \\
+                                    --set canary.version=${params.CANARY_VERSION} \\
+                                    --wait \\
+                                    --timeout 5m
+                            """
+                        } else {
+                            echo "非首次部署：仅部署灰度版，稳定版保持不变"
+                            sh """
+                                helm upgrade --install ${APP_NAME} charts/jvm-demo \\
+                                    --namespace ${HELM_NAMESPACE_PROD} \\
+                                    --values charts/jvm-demo/values-prod.yaml \\
+                                    --set image.repository=${DOCKER_REGISTRY}/${APP_NAME} \\
+                                    --set stable.version=${params.STABLE_VERSION} \\
+                                    --set canary.enabled=true \\
+                                    --set canary.weight=${params.CANARY_WEIGHT} \\
+                                    --set canary.version=${params.CANARY_VERSION} \\
+                                    --reuse-values \\
+                                    --wait \\
+                                    --timeout 5m
+                            """
+                        }
                     } else {
-                        echo "全量发布到生产环境"
-                        sh """
-                            helm upgrade --install ${APP_NAME} charts/jvm-demo \\
-                                --namespace ${HELM_NAMESPACE_PROD} \\
-                                --create-namespace \\
-                                --values charts/jvm-demo/values-prod.yaml \\
-                                --set image.tag=${env.BUILD_NUMBER} \\
-                                --set image.repository=${DOCKER_REGISTRY}/${APP_NAME} \\
-                                --set canary.enabled=false \\
-                                --wait \\
-                                --timeout 5m
-                        """
+                        echo "=== 全量发布流程 ==="
+                        echo "将稳定版升级到: ${params.CANARY_VERSION}"
+                        
+                        if (params.FIRST_DEPLOY) {
+                            echo "首次部署：部署稳定版"
+                            sh """
+                                helm upgrade --install ${APP_NAME} charts/jvm-demo \\
+                                    --namespace ${HELM_NAMESPACE_PROD} \\
+                                    --create-namespace \\
+                                    --values charts/jvm-demo/values-prod.yaml \\
+                                    --set image.repository=${DOCKER_REGISTRY}/${APP_NAME} \\
+                                    --set stable.version=${params.CANARY_VERSION} \\
+                                    --set canary.enabled=false \\
+                                    --wait \\
+                                    --timeout 5m
+                            """
+                        } else {
+                            echo "全量升级：升级稳定版到新版本"
+                            sh """
+                                helm upgrade --install ${APP_NAME} charts/jvm-demo \\
+                                    --namespace ${HELM_NAMESPACE_PROD} \\
+                                    --values charts/jvm-demo/values-prod.yaml \\
+                                    --set image.repository=${DOCKER_REGISTRY}/${APP_NAME} \\
+                                    --set stable.version=${params.CANARY_VERSION} \\
+                                    --set canary.enabled=false \\
+                                    --reuse-values \\
+                                    --wait \\
+                                    --timeout 5m
+                            """
+                        }
                     }
                     echo '生产环境部署成功！'
                 }
